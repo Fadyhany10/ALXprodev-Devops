@@ -3,33 +3,55 @@
 # List of Pokémon
 pokemon_list=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
 
-# Create output directory and clean old files
+# Create output directory and clear logs
 mkdir -p pokemon_data
 > errors.txt
 
-# Function to fetch a single Pokémon in the background
+# Max time to wait for any single process (in seconds)
+TIMEOUT=10
+
+# Function to fetch data with timeout and PID tracking
 fetch_pokemon() {
     local name=$1
     local output="pokemon_data/${name}.json"
 
     echo "Fetching data for $name..."
 
-    response=$(curl -s -w "%{http_code}" "https://pokeapi.co/api/v2/pokemon/$name" -o "$output")
+    # Run curl in the background
+    curl -s -w "%{http_code}" "https://pokeapi.co/api/v2/pokemon/$name" -o "$output" &
+    pid=$!
 
-    if [ "$response" -eq 200 ]; then
-        echo "Saved data to $output ✅"
-    else
-        echo "❌ Failed to fetch $name (HTTP $response)" >> errors.txt
+    # Wait up to TIMEOUT seconds
+    for ((i=0; i<$TIMEOUT; i++)); do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            break
+        fi
+        sleep 1
+    done
+
+    # If still running, kill it
+    if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid"
+        echo "❌ Timed out and killed process for $name" >> errors.txt
         rm -f "$output"
+    else
+        # If process completed, check response
+        response=$(tail -c 3 "$output")  # Get last 3 digits of curl output (status code)
+        if [ "$response" = "200" ]; then
+            echo "Saved data to $output ✅"
+        else
+            echo "❌ Failed to fetch $name (HTTP $response)" >> errors.txt
+            rm -f "$output"
+        fi
     fi
 }
 
-# Launch all fetches in parallel
+# Start all fetches in parallel
 for name in "${pokemon_list[@]}"; do
     fetch_pokemon "$name" &
 done
 
-# Wait for all background jobs to finish
+# Wait for all to complete
 wait
 
-echo "✅ All fetches completed."
+echo "✅ All processes completed."
