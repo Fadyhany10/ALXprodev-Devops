@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# List of Pokémon
+pokemon_list=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
+
+# Create output directory and clean old files
+mkdir -p pokemon_data
+> errors.txt
+
+# Function to fetch a single Pokémon in the background
+fetch_pokemon() {
+    local name=$1
+    local output="pokemon_data/${name}.json"
+
+    echo "Fetching data for $name..."
+
+    response=$(curl -s -w "%{http_code}" "https://pokeapi.co/api/v2/pokemon/$name" -o "$output")
+
+    if [ "$response" -eq 200 ]; then
+        echo "Saved data to $output ✅"
+    else
+        echo "❌ Failed to fetch $name (HTTP $response)" >> errors.txt
+        rm -f "$output"
+    fi
+}
+
+# Launch all fetches in parallel
+for name in "${pokemon_list[@]}"; do
+    fetch_pokemon "$name" &
+done
+
+# Wait for all background jobs to finish
+wait
+
+echo "✅ All fetches completed."
