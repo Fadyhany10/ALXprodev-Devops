@@ -1,57 +1,47 @@
 #!/bin/bash
 
-# List of Pokémon
+# Pokémon list
 pokemon_list=("bulbasaur" "ivysaur" "venusaur" "charmander" "charmeleon")
 
-# Create output directory and clear logs
+# Output directory and error log
 mkdir -p pokemon_data
 > errors.txt
 
-# Max time to wait for any single process (in seconds)
-TIMEOUT=10
-
-# Function to fetch data with timeout and PID tracking
+# Function to fetch a single Pokémon
 fetch_pokemon() {
     local name=$1
     local output="pokemon_data/${name}.json"
 
     echo "Fetching data for $name..."
 
-    # Run curl in the background
+    # Fetch in background and output HTTP code to temp file
     curl -s -w "%{http_code}" "https://pokeapi.co/api/v2/pokemon/$name" -o "$output" &
-    pid=$!
-
-    # Wait up to TIMEOUT seconds
-    for ((i=0; i<$TIMEOUT; i++)); do
-        if ! kill -0 "$pid" 2>/dev/null; then
-            break
-        fi
-        sleep 1
-    done
-
-    # If still running, kill it
-    if kill -0 "$pid" 2>/dev/null; then
-        kill "$pid"
-        echo "❌ Timed out and killed process for $name" >> errors.txt
-        rm -f "$output"
-    else
-        # If process completed, check response
-        response=$(tail -c 3 "$output")  # Get last 3 digits of curl output (status code)
-        if [ "$response" = "200" ]; then
-            echo "Saved data to $output ✅"
-        else
-            echo "❌ Failed to fetch $name (HTTP $response)" >> errors.txt
-            rm -f "$output"
-        fi
-    fi
 }
 
-# Start all fetches in parallel
+# Start all fetches in background
 for name in "${pokemon_list[@]}"; do
     fetch_pokemon "$name" &
 done
 
-# Wait for all to complete
+# List background jobs
+echo ""
+echo "=== Background Jobs Started ==="
+jobs
+echo "==============================="
+echo ""
+
+# Wait a few seconds and optionally kill any hanging jobs (simulation)
+sleep 3
+
+# Optional: kill all remaining background jobs
+for job in $(jobs -p); do
+    if kill -0 "$job" 2>/dev/null; then
+        kill "$job"
+        echo "Killed hanging job with PID $job" >> errors.txt
+    fi
+done
+
+# Wait for all background jobs to terminate
 wait
 
-echo "✅ All processes completed."
+echo "✅ All fetches and jobs are handled."
